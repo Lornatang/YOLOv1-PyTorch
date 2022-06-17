@@ -118,15 +118,15 @@ def _calculate_iou(inputs_boxes: torch.Tensor, target_boxes: torch.Tensor) -> to
     epsilon = 1e-6
 
     # Get boxes shape
-    inputs_boxes_x1 = inputs_boxes[..., 0:1] - (inputs_boxes[..., 2:3] // 2)
-    inputs_boxes_y1 = inputs_boxes[..., 1:2] - (inputs_boxes[..., 3:4] // 2)
-    inputs_boxes_x2 = inputs_boxes[..., 0:1] + (inputs_boxes[..., 2:3] // 2)
-    inputs_boxes_y2 = inputs_boxes[..., 1:2] + (inputs_boxes[..., 3:4] // 2)
+    inputs_boxes_x1 = inputs_boxes[..., 0:1] - torch.floor_divide(inputs_boxes[..., 2:3], 2)
+    inputs_boxes_y1 = inputs_boxes[..., 1:2] - torch.floor_divide(inputs_boxes[..., 3:4], 2)
+    inputs_boxes_x2 = inputs_boxes[..., 0:1] + torch.floor_divide(inputs_boxes[..., 2:3], 2)
+    inputs_boxes_y2 = inputs_boxes[..., 1:2] + torch.floor_divide(inputs_boxes[..., 3:4], 2)
 
-    target_boxes_x1 = target_boxes[..., 0:1] - (target_boxes[..., 2:3] // 2)
-    target_boxes_y1 = target_boxes[..., 1:2] - (target_boxes[..., 3:4] // 2)
-    target_boxes_x2 = target_boxes[..., 0:1] + (target_boxes[..., 2:3] // 2)
-    target_boxes_y2 = target_boxes[..., 1:2] + (target_boxes[..., 3:4] // 2)
+    target_boxes_x1 = target_boxes[..., 0:1] - torch.floor_divide(target_boxes[..., 2:3], 2)
+    target_boxes_y1 = target_boxes[..., 1:2] - torch.floor_divide(target_boxes[..., 3:4], 2)
+    target_boxes_x2 = target_boxes[..., 0:1] + torch.floor_divide(target_boxes[..., 2:3], 2)
+    target_boxes_y2 = target_boxes[..., 1:2] + torch.floor_divide(target_boxes[..., 3:4], 2)
 
     # Get boxes area
     inputs_boxes_area = torch.abs((inputs_boxes_x2 - inputs_boxes_x1) * (inputs_boxes_y2 - inputs_boxes_y1))
@@ -417,29 +417,29 @@ class YOLOLoss(nn.Module):
             torch.abs(box_predictions[..., 2:4] + self.epsilon))
         box_targets[..., 2:4] = torch.sqrt(box_targets[..., 2:4])
 
-        boxes_loss = self.mse(torch.flatten(box_predictions, end_dim=-2),
-                              torch.flatten(box_targets, end_dim=-2))
+        boxes_loss = self.criterion(torch.flatten(box_predictions, end_dim=-2),
+                                    torch.flatten(box_targets, end_dim=-2))
         boxes_loss = torch.mul(boxes_loss, self.boxes_coefficient_loss)
 
         # Calculate object loss
         # The inputs_boxes is the confidence score for the bbox with highest IoU
         inputs_boxes = (best_boxes * inputs[..., 25:26]) + (1 - best_boxes) * inputs[..., 20:21]
 
-        object_loss = self.mse(torch.flatten(exists_boxes * inputs_boxes),
-                               torch.flatten(exists_boxes * target[..., 20:21]))
+        object_loss = self.criterion(torch.flatten(exists_boxes * inputs_boxes),
+                                     torch.flatten(exists_boxes * target[..., 20:21]))
 
         # Calculate non-object loss
-        inputs_non_object_loss = self.mse(torch.flatten((1 - exists_boxes) * inputs[..., 20:21], start_dim=1),
-                                          torch.flatten((1 - exists_boxes) * target[..., 20:21], start_dim=1))
+        inputs_non_object_loss = self.criterion(torch.flatten((1 - exists_boxes) * inputs[..., 20:21], start_dim=1),
+                                                torch.flatten((1 - exists_boxes) * target[..., 20:21], start_dim=1))
 
-        target_non_object_loss = self.mse(torch.flatten((1 - exists_boxes) * inputs[..., 25:26], start_dim=1),
-                                          torch.flatten((1 - exists_boxes) * target[..., 20:21], start_dim=1))
+        target_non_object_loss = self.criterion(torch.flatten((1 - exists_boxes) * inputs[..., 25:26], start_dim=1),
+                                                torch.flatten((1 - exists_boxes) * target[..., 20:21], start_dim=1))
         non_object_loss = torch.add(inputs_non_object_loss, target_non_object_loss)
         non_object_loss = torch.mul(non_object_loss, self.non_object_coefficient_loss)
 
         # Calculate classes loss
-        class_loss = self.mse(torch.flatten(exists_boxes * inputs[..., :20], end_dim=-2),
-                              torch.flatten(exists_boxes * target[..., :20], end_dim=-2))
+        class_loss = self.criterion(torch.flatten(exists_boxes * inputs[..., :20], end_dim=-2),
+                                    torch.flatten(exists_boxes * target[..., :20], end_dim=-2))
 
         # Four loss count is YOLO loss!
         loss = boxes_loss + object_loss + non_object_loss + class_loss
