@@ -18,7 +18,7 @@ import torch.nn as nn
 from torch.utils.data import DataLoader
 
 __all__ = [
-    "YOLOv1",
+    "YOLOv1Tiny", "YOLOv1",
     "calculate_map", "get_bounding_boxes",
     "YOLOLoss",
 ]
@@ -35,6 +35,58 @@ class _BasicConvBlock(nn.Module):
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         out = self.bcb(x)
+
+        return out
+
+
+class YOLOv1Tiny(nn.Module):
+    def __init__(self, num_grid: int, num_bounding_boxes: int, num_classes: int) -> None:
+        super(YOLOv1Tiny, self).__init__()
+        self.num_grid = num_grid
+        self.num_bounding_boxes = num_bounding_boxes
+        self.num_classes = num_classes
+
+        self.features = nn.Sequential(
+            # 448*448*3 -> 224*224*16
+            _BasicConvBlock(3, 16, (3, 3), (1, 1), (1, 1)),
+            nn.MaxPool2d((2, 2), (2, 2)),
+
+            # 224*224*16 -> 112*112*32
+            _BasicConvBlock(16, 32, (3, 3), (1, 1), (1, 1)),
+            nn.MaxPool2d((2, 2), (2, 2)),
+
+            # 112*112*32 -> 56*56*64
+            _BasicConvBlock(32, 64, (3, 3), (1, 1), (1, 1)),
+            nn.MaxPool2d((2, 2), (2, 2)),
+
+            # 56*56*64 -> 28*28*128
+            _BasicConvBlock(64, 128, (3, 3), (1, 1), (1, 1)),
+            nn.MaxPool2d((2, 2), (2, 2)),
+
+            # 28*28*128 -> 14*14*256
+            _BasicConvBlock(128, 256, (3, 3), (1, 1), (1, 1)),
+            nn.MaxPool2d((2, 2), (2, 2)),
+
+            # 14*14*256 -> 7*7*1024
+            _BasicConvBlock(256, 512, (3, 3), (1, 1), (1, 1)),
+            nn.MaxPool2d((2, 2), (2, 2)),
+            _BasicConvBlock(512, 1024, (3, 3), (1, 1), (1, 1)),
+        )
+
+        self.classifier = nn.Sequential(
+            nn.Linear(7 * 7 * 1024, 4096),
+            nn.LeakyReLU(0.1, True),
+            nn.Dropout(0.5),
+            nn.Linear(4096, num_grid * num_grid * (num_bounding_boxes * 5 + num_classes)),
+        )
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        return self._forward_impl(x)
+
+    def _forward_impl(self, x: torch.Tensor) -> torch.Tensor:
+        out = self.features(x)
+        out = torch.flatten(out, 1)
+        out = self.classifier(out)
 
         return out
 
