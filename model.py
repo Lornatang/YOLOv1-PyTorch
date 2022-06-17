@@ -47,22 +47,22 @@ class YOLOv1(nn.Module):
         self.num_classes = num_classes
 
         self.features = nn.Sequential(
-            # 448*448*3 -> 224*224*64
-            _BasicConvBlock(3, 64, (7, 7), (2, 2), (3, 3)),
+            # 448*448*3 -> 112*112*64
+            _BasicConvBlock(3, 64, (7, 7), (2, 2), (1, 1)),
             nn.MaxPool2d((2, 2), (2, 2)),
 
-            # 224*224*64 -> 112*112*192
+            # 112*112*64 -> 56*56*192
             _BasicConvBlock(64, 192, (3, 3), (1, 1), (1, 1)),
             nn.MaxPool2d((2, 2), (2, 2)),
 
-            # 112*112*256 -> 56*56*512
+            # 56*56*192 -> 28*28*512
             _BasicConvBlock(192, 128, (1, 1), (1, 1), (0, 0)),
             _BasicConvBlock(128, 256, (3, 3), (1, 1), (1, 1)),
             _BasicConvBlock(256, 256, (1, 1), (1, 1), (0, 0)),
             _BasicConvBlock(256, 512, (3, 3), (1, 1), (1, 1)),
             nn.MaxPool2d((2, 2), (2, 2)),
 
-            # 56*56*512 -> 28*28*1024
+            # 28*28*512 -> 14*14*1024
             _BasicConvBlock(512, 256, (1, 1), (1, 1), (0, 0)),
             _BasicConvBlock(256, 512, (3, 3), (1, 1), (1, 1)),
             _BasicConvBlock(512, 256, (1, 1), (1, 1), (0, 0)),
@@ -75,14 +75,14 @@ class YOLOv1(nn.Module):
             _BasicConvBlock(512, 1024, (3, 3), (1, 1), (1, 1)),
             nn.MaxPool2d((2, 2), (2, 2)),
 
-            # 28*28*1024 -> 7*7*1024
+            # 14*14*1024 -> 7*7*1024
             _BasicConvBlock(1024, 512, (1, 1), (1, 1), (0, 0)),
             _BasicConvBlock(512, 1024, (3, 3), (1, 1), (1, 1)),
             _BasicConvBlock(1024, 512, (1, 1), (1, 1), (0, 0)),
             _BasicConvBlock(512, 1024, (3, 3), (1, 1), (1, 1)),
-            _BasicConvBlock(1024, 1024, (1, 1), (1, 1), (0, 0)),
+            _BasicConvBlock(1024, 1024, (3, 3), (1, 1), (1, 1)),
             _BasicConvBlock(1024, 1024, (3, 3), (2, 2), (1, 1)),
-            _BasicConvBlock(1024, 1024, (1, 1), (1, 1), (0, 0)),
+            _BasicConvBlock(1024, 1024, (3, 3), (1, 1), (1, 1)),
             _BasicConvBlock(1024, 1024, (3, 3), (1, 1), (1, 1)),
         )
 
