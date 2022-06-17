@@ -170,15 +170,15 @@ def _calculate_iou(inputs_boxes: torch.Tensor, target_boxes: torch.Tensor) -> to
     epsilon = 1e-6
 
     # Get boxes shape
-    inputs_boxes_x1 = inputs_boxes[..., 0:1] - torch.div(inputs_boxes[..., 2:3], 2, "trunc")
-    inputs_boxes_y1 = inputs_boxes[..., 1:2] - torch.div(inputs_boxes[..., 3:4], 2, "trunc")
-    inputs_boxes_x2 = inputs_boxes[..., 0:1] + torch.div(inputs_boxes[..., 2:3], 2, "trunc")
-    inputs_boxes_y2 = inputs_boxes[..., 1:2] + torch.div(inputs_boxes[..., 3:4], 2, "trunc")
+    inputs_boxes_x1 = inputs_boxes[..., 0:1] - torch.div(inputs_boxes[..., 2:3], 2, rounding_mode="trunc")
+    inputs_boxes_y1 = inputs_boxes[..., 1:2] - torch.div(inputs_boxes[..., 3:4], 2, rounding_mode="trunc")
+    inputs_boxes_x2 = inputs_boxes[..., 0:1] + torch.div(inputs_boxes[..., 2:3], 2, rounding_mode="trunc")
+    inputs_boxes_y2 = inputs_boxes[..., 1:2] + torch.div(inputs_boxes[..., 3:4], 2, rounding_mode="trunc")
 
-    target_boxes_x1 = target_boxes[..., 0:1] - torch.div(target_boxes[..., 2:3], 2, "trunc")
-    target_boxes_y1 = target_boxes[..., 1:2] - torch.div(target_boxes[..., 3:4], 2, "trunc")
-    target_boxes_x2 = target_boxes[..., 0:1] + torch.div(target_boxes[..., 2:3], 2, "trunc")
-    target_boxes_y2 = target_boxes[..., 1:2] + torch.div(target_boxes[..., 3:4], 2, "trunc")
+    target_boxes_x1 = target_boxes[..., 0:1] - torch.div(target_boxes[..., 2:3], 2, rounding_mode="trunc")
+    target_boxes_y1 = target_boxes[..., 1:2] - torch.div(target_boxes[..., 3:4], 2, rounding_mode="trunc")
+    target_boxes_x2 = target_boxes[..., 0:1] + torch.div(target_boxes[..., 2:3], 2, rounding_mode="trunc")
+    target_boxes_y2 = target_boxes[..., 1:2] + torch.div(target_boxes[..., 3:4], 2, rounding_mode="trunc")
 
     # Get boxes area
     inputs_boxes_area = torch.abs((inputs_boxes_x2 - inputs_boxes_x1) * (inputs_boxes_y2 - inputs_boxes_y1))
