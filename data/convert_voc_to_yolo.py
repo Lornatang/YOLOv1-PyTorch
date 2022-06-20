@@ -92,9 +92,9 @@ def convert_annotation_to_txt(input_annotation_file_path: str,
     annotations_root = annotation_tree.getroot()
 
     # Get the height and width of the entire image
-    size = annotations_root.find("size")
-    width = int(size.find("width").text)
-    height = int(size.find("height").text)
+    image_size = annotations_root.find("size")
+    image_width = int(image_size.find("width").text)
+    image_height = int(image_size.find("height").text)
 
     # Iterate over each annotation object in the annotation file
     for object_information in annotations_root.iter("object"):
@@ -116,21 +116,21 @@ def convert_annotation_to_txt(input_annotation_file_path: str,
                   float(xml_bboxes.find("ymin").text),
                   float(xml_bboxes.find("ymax").text))
 
-        # YOLO annotation format [classes_index, x, y, w, h]
-        div_width = 1. / width
-        div_height = 1. / height
+        # YOLO annotation format [classes_index, pos_x, pos_y, bboxes_width, bboxes_height]
+        div_width = 1. / image_width
+        div_height = 1. / image_height
 
-        x = (bboxes[0] + bboxes[1]) / 2.0
-        y = (bboxes[2] + bboxes[3]) / 2.0
-        w = bboxes[1] - bboxes[0]
-        h = bboxes[3] - bboxes[2]
+        pos_x = (bboxes[0] + bboxes[1]) / 2.0
+        pos_y = (bboxes[2] + bboxes[3]) / 2.0
+        bboxes_width = bboxes[1] - bboxes[0]
+        bboxes_height = bboxes[3] - bboxes[2]
 
-        x = x * div_width
-        w = w * div_width
-        y = y * div_height
-        h = h * div_height
+        pos_x = pos_x * div_width
+        bboxes_width = bboxes_width * div_width
+        pos_y = pos_y * div_height
+        bboxes_height = bboxes_height * div_height
 
-        txt_file.write(f"{str(classes_index)} {x} {y} {w} {h}\n")
+        txt_file.write(f"{str(classes_index)} {pos_x} {pos_y} {bboxes_width} {bboxes_height}\n")
 
     # Close all file op
     annotation_file.close()
