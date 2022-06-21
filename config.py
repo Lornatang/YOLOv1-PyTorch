@@ -47,7 +47,7 @@ if mode == "train":
     annotations_dir = "./data/YOLO/annotations"
 
     image_size = 448
-    batch_size = 64
+    batch_size = 16
     num_workers = 4
 
     # Incremental training and migration training
@@ -57,20 +57,16 @@ if mode == "train":
     epochs = 135
 
     # Optimizer parameter. SGD is slow, so I use Adam
-    model_lr = 1e-2
-    model_momentum = 0.9
-    model_weight_decay = 5e-4
-
-    # Dynamically adjust the learning rate policy
-    lr_scheduler_milestones = [75, 105]
-    lr_scheduler_gamma = 0.1
+    model_lr = 2e-5
+    model_betas = (0.9, 0.99)
+    model_weight_decay = 0
 
     # Detection parameters
     iou_threshold = 0.5
-    confidence_threshold = 0.5
+    confidence_threshold = 0.4
 
     # How many iterations to print the training result
-    print_frequency = 50
+    print_frequency = 100
 
 if mode == "test":
     # Dataset setting
@@ -78,8 +74,11 @@ if mode == "test":
     images_dir = "./data/YOLO/images"
     annotations_dir = "./data/YOLO/annotations"
 
+    # Test image size
+    image_size = 448
+
     # Detection parameters
     iou_threshold = 0.5
-    confidence_threshold = 0.1
+    confidence_threshold = 0.4
 
-    model_path = "./results/yolotiny_165.pth.tar"
+    model_path = "./results/pretrained_models/YOLOv1Tiny-VOC0712-xxxxxxxx.pth.tar"
