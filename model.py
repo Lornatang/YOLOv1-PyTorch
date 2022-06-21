@@ -160,13 +160,13 @@ class YOLOLoss(nn.Module):
                  num_grid: int,
                  num_bounding_boxes: int,
                  num_classes: int,
-                 eps: float = 1e-6) -> None:
+                 eps: float = 1e-9) -> None:
         super().__init__()
         self.criterion = criterion
         self.num_grid = num_grid
         self.num_bounding_boxes = num_bounding_boxes
         self.num_classes = num_classes
-        self.epsilon = eps
+        self.eps = eps
 
         # These Loss values are set in the YOLO paper
         self.boxes_coefficient_loss = 5
@@ -193,7 +193,7 @@ class YOLOLoss(nn.Module):
 
         # Make sure value >= 0.
         box_predictions[..., 2:4] = torch.sign(box_predictions[..., 2:4]) * torch.sqrt(
-            torch.abs(box_predictions[..., 2:4] + self.epsilon))
+            torch.abs(box_predictions[..., 2:4] + self.eps))
         box_targets[..., 2:4] = torch.sqrt(box_targets[..., 2:4])
 
         boxes_loss = self.criterion(torch.flatten(box_predictions, end_dim=-2),

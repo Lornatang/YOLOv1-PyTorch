@@ -49,9 +49,6 @@ def main():
     optimizer = define_optimizer(model)
     print("Define optimizer functions successfully.")
 
-    scheduler = define_scheduler(optimizer)
-    print("Define optimizer scheduler functions successfully.")
-
     print("Check whether the resume model is restored...")
     if config.resume:
         # Load checkpoint model
@@ -67,8 +64,6 @@ def main():
         model.load_state_dict(model_state_dict)
         # Load the optimizer model
         optimizer.load_state_dict(checkpoint["optimizer"])
-        # Load the scheduler model
-        scheduler.load_state_dict(checkpoint["scheduler"])
         print("Loaded resume model weights.")
 
     # Create a folder of super-resolution experiment results
@@ -96,17 +91,13 @@ def main():
         map_value = validate(model, test_prefetcher, epoch, writer, "test")
         print("\n")
 
-        # Update LR
-        scheduler.step()
-
         # Automatically save the model with the highest index
         is_best = map_value > best_map
         best_map = max(map_value, best_map)
         torch.save({"epoch": epoch + 1,
                     "best_mAP": best_map,
                     "state_dict": model.state_dict(),
-                    "optimizer": optimizer.state_dict(),
-                    "scheduler": scheduler.state_dict()},
+                    "optimizer": optimizer.state_dict()},
                    os.path.join(samples_dir, f"epoch_{epoch + 1}.pth.tar"))
         if is_best:
             shutil.copyfile(os.path.join(samples_dir, f"epoch_{epoch + 1}.pth.tar"),
@@ -134,7 +125,7 @@ def load_dataset() -> [CUDAPrefetcher, CUDAPrefetcher]:
                                  config.model_num_grid,
                                  config.model_num_bboxes,
                                  config.model_num_classes,
-                                 "train")
+                                 "test")
 
     # Generator all dataloader
     train_dataloader = DataLoader(train_datasets,
@@ -186,19 +177,13 @@ def define_loss() -> YOLOLoss:
     return yolo_criterion
 
 
-def define_optimizer(model: nn.Module) -> optim.SGD:
-    optimizer = optim.SGD(model.parameters(),
-                          config.model_lr,
-                          config.model_momentum,
-                          weight_decay=config.model_weight_decay)
+def define_optimizer(model: nn.Module) -> optim.Adam:
+    optimizer = optim.Adam(model.parameters(),
+                           config.model_lr,
+                           config.model_betas,
+                           weight_decay=config.model_weight_decay)
 
     return optimizer
-
-
-def define_scheduler(optimizer: optim.SGD) -> lr_scheduler.MultiStepLR:
-    scheduler = lr_scheduler.MultiStepLR(optimizer, config.lr_scheduler_milestones, config.lr_scheduler_gamma)
-
-    return scheduler
 
 
 def train(model: nn.Module,
