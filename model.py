@@ -160,13 +160,13 @@ class YOLOLoss(nn.Module):
                  num_grid: int,
                  num_bounding_boxes: int,
                  num_classes: int,
-                 epsilon: float = 1e-6) -> None:
+                 eps: float = 1e-6) -> None:
         super().__init__()
         self.criterion = criterion
         self.num_grid = num_grid
         self.num_bounding_boxes = num_bounding_boxes
         self.num_classes = num_classes
-        self.epsilon = epsilon
+        self.epsilon = eps
 
         # These Loss values are set in the YOLO paper
         self.boxes_coefficient_loss = 5
