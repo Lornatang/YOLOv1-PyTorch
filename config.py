@@ -74,8 +74,10 @@ if mode == "test":
     images_dir = "./data/YOLO/images"
     annotations_dir = "./data/YOLO/annotations"
 
-    # Test image size
+    # Test parameters setting
     image_size = 448
+    batch_size = 128
+    num_workers = 4
 
     # Detection parameters
     iou_threshold = 0.5

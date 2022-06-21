@@ -287,17 +287,10 @@ def validate(model: nn.Module,
         mode (str): test validation dataset accuracy or test dataset mAP
 
     """
-    # Calculate how many batches of data are in each Epoch
-    batches = len(data_prefetcher)
-    batch_time = AverageMeter("Time", ":6.3f")
-    mapes = AverageMeter("mAP", ":4.2f")
-    progress = ProgressMeter(len(data_prefetcher), [batch_time, mapes], prefix=f"{mode}: ")
-
     # Put the YOLO network model in validation mode
     model.eval()
 
     # Initialize the number of data batches to print logs on the terminal
-    batch_index = 0
     total_index = 0
 
     # Initialize all bboxes
@@ -307,9 +300,6 @@ def validate(model: nn.Module,
     # Initialize the data loader and load the first batch of data
     data_prefetcher.reset()
     batch_data = data_prefetcher.next()
-
-    # Get the initialization test time
-    end = time.time()
 
     with torch.no_grad():
         while batch_data is not None:
@@ -321,9 +311,6 @@ def validate(model: nn.Module,
                                                       memory_format=torch.channels_last,
                                                       non_blocking=True)
 
-            # Get batch size
-            batch_size = images.size(0)
-
             # Use the generator model to generate a fake sample
             with amp.autocast():
                 predictions = model(images)
@@ -331,7 +318,7 @@ def validate(model: nn.Module,
             predictions_bboxes = convert_cell_boxes_to_boxes(predictions, config.model_num_grid)
             annotations_bboxes = convert_cell_boxes_to_boxes(annotations, config.model_num_grid)
 
-            for index in range(batch_size):
+            for index in range(images.size(0)):
                 nms_predictions_bboxes = nms(predictions_bboxes[index],
                                              config.iou_threshold,
                                              config.confidence_threshold)
@@ -345,37 +332,24 @@ def validate(model: nn.Module,
 
                 total_index += 1
 
-            # Statistical mAP value for terminal data output
-            map_value = calculate_map(predictions_bboxes_list,
-                                      annotations_bboxes_list,
-                                      config.iou_threshold,
-                                      config.model_num_classes)
-            mapes.update(map_value.item(), batch_size)
-
-            # Calculate the time it takes to fully test a batch of data
-            batch_time.update(time.time() - end)
-            end = time.time()
-
-            # Record training log information
-            if batch_index % (batches // 5) == 0:
-                progress.display(batch_index)
-
             # Preload the next batch of data
             batch_data = data_prefetcher.next()
 
-            # After training a batch of data, add 1 to the number of data batches to ensure that the
-            # terminal print data normally
-            batch_index += 1
+    # Calculate mAP value for dataset
+    map_value = calculate_map(predictions_bboxes_list,
+                              annotations_bboxes_list,
+                              config.iou_threshold,
+                              config.model_num_classes)
 
-    # print metrics
-    progress.display_summary()
+    # Print metrics
+    print(f"* mAP: {map_value:.2f}")
 
     if mode == "valid" or mode == "test":
-        writer.add_scalar(f"{mode}/mAP", mapes.avg, epoch + 1)
+        writer.add_scalar(f"{mode}/mAP", map_value, epoch + 1)
     else:
         raise ValueError("Unsupported mode, please use `valid` or `test`.")
 
-    return mapes.avg
+    return map_value
 
 
 class Summary(Enum):

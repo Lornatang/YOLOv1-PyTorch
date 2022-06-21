@@ -87,8 +87,8 @@ class ImageDataset(Dataset):
 
         # Convert To Cells
         annotations_matrix = torch.zeros((self.num_grid, self.num_grid, self.num_classes + 5 * self.num_bboxes))
-        for class_label, pos_x, pos_y, width, height in annotations:
-            class_index = int(class_label)
+        for class_index, pos_x, pos_y, width, height in annotations:
+            class_index = int(class_index)
 
             # i,j represents the cell row and cell column
             i, j = int(self.num_grid * pos_y), int(self.num_grid * pos_x)
