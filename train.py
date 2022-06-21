@@ -189,7 +189,7 @@ def define_optimizer(model: nn.Module) -> optim.Adam:
 def train(model: nn.Module,
           train_prefetcher: CUDAPrefetcher,
           yolo_criterion: YOLOLoss,
-          optimizer: optim.SGD,
+          optimizer: optim.Adam,
           epoch: int,
           scaler: amp.GradScaler,
           writer: SummaryWriter) -> None:
@@ -199,7 +199,7 @@ def train(model: nn.Module,
         model (nn.Module): YOLO model
         train_prefetcher (CUDAPrefetcher): training dataset iterator
         yolo_criterion (YOLOLoss): Calculate the feature difference between real samples and fake samples by the feature extraction model
-        optimizer (optim.SGD): an optimizer for optimizing generator models in YOLO networks
+        optimizer (optim.Adam): an optimizer for optimizing generator models in YOLO networks
         epoch (int): number of training epochs during training the YOLO network
         scaler (amp.GradScaler): Mixed precision training function
         writer (SummaryWrite): log file management function
