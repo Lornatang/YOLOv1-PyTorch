@@ -48,15 +48,15 @@ def calculate_iou(inputs_bboxes: torch.Tensor, target_bboxes: torch.Tensor, eps:
 
     """
     # Get boxes shape
-    inputs_bboxes_x1 = inputs_bboxes[..., 0:1] - torch.div(inputs_bboxes[..., 2:3], 2, rounding_mode="trunc")
-    inputs_bboxes_y1 = inputs_bboxes[..., 1:2] - torch.div(inputs_bboxes[..., 3:4], 2, rounding_mode="trunc")
-    inputs_bboxes_x2 = inputs_bboxes[..., 0:1] + torch.div(inputs_bboxes[..., 2:3], 2, rounding_mode="trunc")
-    inputs_bboxes_y2 = inputs_bboxes[..., 1:2] + torch.div(inputs_bboxes[..., 3:4], 2, rounding_mode="trunc")
+    inputs_bboxes_x1 = inputs_bboxes[..., 0:1] - inputs_bboxes[..., 2:3] / 2
+    inputs_bboxes_y1 = inputs_bboxes[..., 1:2] - inputs_bboxes[..., 3:4] / 2
+    inputs_bboxes_x2 = inputs_bboxes[..., 0:1] + inputs_bboxes[..., 2:3] / 2
+    inputs_bboxes_y2 = inputs_bboxes[..., 1:2] + inputs_bboxes[..., 3:4] / 2
 
-    target_bboxes_x1 = target_bboxes[..., 0:1] - torch.div(target_bboxes[..., 2:3], 2, rounding_mode="trunc")
-    target_bboxes_y1 = target_bboxes[..., 1:2] - torch.div(target_bboxes[..., 3:4], 2, rounding_mode="trunc")
-    target_bboxes_x2 = target_bboxes[..., 0:1] + torch.div(target_bboxes[..., 2:3], 2, rounding_mode="trunc")
-    target_bboxes_y2 = target_bboxes[..., 1:2] + torch.div(target_bboxes[..., 3:4], 2, rounding_mode="trunc")
+    target_bboxes_x1 = target_bboxes[..., 0:1] - target_bboxes[..., 2:3] / 2
+    target_bboxes_y1 = target_bboxes[..., 1:2] - target_bboxes[..., 3:4] / 2
+    target_bboxes_x2 = target_bboxes[..., 0:1] + target_bboxes[..., 2:3] / 2
+    target_bboxes_y2 = target_bboxes[..., 1:2] + target_bboxes[..., 3:4] / 2
 
     # Get intersection area
     x1 = torch.max(inputs_bboxes_x1, target_bboxes_x1)
@@ -82,11 +82,11 @@ def calculate_iou(inputs_bboxes: torch.Tensor, target_bboxes: torch.Tensor, eps:
     return iou
 
 
-def nms(bounding_boxes: list, iou_threshold: float, confidence_threshold: float) -> list:
+def nms(bboxes: list, iou_threshold: float, confidence_threshold: float) -> list:
     """Non Max Suppression given bboxes
 
     Args:
-        bounding_boxes (list): List of lists containing all bboxes.
+        bboxes (list): List of lists containing all bboxes.
             bounding_boxes shape: [pred_classes, confidence_score, x1, y1, x2, y2]
         iou_threshold (float): Threshold where predicted bboxes is correct
         confidence_threshold (float): Threshold to remove predicted bboxes
@@ -95,34 +95,34 @@ def nms(bounding_boxes: list, iou_threshold: float, confidence_threshold: float)
         nms_bounding_boxes (list): Bboxes after performing NMS given a specific IoU threshold
 
     """
-    assert type(bounding_boxes) == list, "bounding_boxes must shape is `list`"
+    assert type(bboxes) == list, "bounding_boxes must shape is `list`"
 
-    bounding_boxes = [box for box in bounding_boxes if box[1] > confidence_threshold]
-    bounding_boxes = sorted(bounding_boxes, key=lambda x: x[1], reverse=True)
-    nms_bounding_boxes = []
+    bboxes = [box for box in bboxes if box[1] > confidence_threshold]
+    bboxes = sorted(bboxes, key=lambda x: x[1], reverse=True)
+    nms_bbox = []
 
-    while bounding_boxes:
-        current_boxes = bounding_boxes.pop(0)
+    while bboxes:
+        current_boxes = bboxes.pop(0)
 
-        bounding_boxes = [boxes for boxes in bounding_boxes if
-                          boxes[0] != current_boxes[0] or calculate_iou(torch.Tensor(current_boxes[2:]),
-                                                                        torch.Tensor(boxes[2:])) < iou_threshold]
+        bboxes = [boxes for boxes in bboxes if
+                  boxes[0] != current_boxes[0] or calculate_iou(torch.Tensor(current_boxes[2:]),
+                                                                torch.Tensor(boxes[2:])) < iou_threshold]
 
-        nms_bounding_boxes.append(current_boxes)
+        nms_bbox.append(current_boxes)
 
-    return nms_bounding_boxes
+    return nms_bbox
 
 
-def calculate_map(inputs_boxes: list,
-                  target_boxes: list,
+def calculate_map(predictions_bboxes: list,
+                  annotations_bboxes: list,
                   iou_threshold: float,
                   num_classes: int,
                   eps: float = 1e-9) -> float:
     """Calculate mean average precision
 
     Args:
-        inputs_boxes (list): Prediction. Shape: [pred_classes, confidence_score, x1, y1, x2, y2]
-        target_boxes (list): Target. Shape: [pred_classes, confidence_score, x1, y1, x2, y2]
+        predictions_bboxes (list): Prediction. Shape: [pred_classes, confidence_score, x1, y1, x2, y2]
+        annotations_bboxes (list): Annotations. Shape: [pred_classes, confidence_score, x1, y1, x2, y2]
         iou_threshold (float): Threshold where predicted bboxes is correct
         num_classes (int): number of classes
         eps (optional, float): Prevent numeric overflow. Default: 1e-9
@@ -139,13 +139,13 @@ def calculate_map(inputs_boxes: list,
         annotations = []
 
         # Loop through all predictions and targets, add when the category name is correct
-        for detection in inputs_boxes:
-            if detection[1] == current_classes:
-                predictions.append(detection)
+        for prediction_bboxes in predictions_bboxes:
+            if prediction_bboxes[1] == current_classes:
+                predictions.append(prediction_bboxes)
 
-        for true_box in target_boxes:
-            if true_box[1] == current_classes:
-                annotations.append(true_box)
+        for annotation_bboxes in annotations_bboxes:
+            if annotation_bboxes[1] == current_classes:
+                annotations.append(annotation_bboxes)
 
         # Find the number of bboxes per training example
         amount_bboxes = Counter([annotation[0] for annotation in annotations])
@@ -156,10 +156,10 @@ def calculate_map(inputs_boxes: list,
         predictions.sort(key=lambda x: x[2], reverse=True)
         true_positive = torch.zeros((len(predictions)))
         false_positive = torch.zeros((len(predictions)))
-        total_true_bboxes = len(annotations)
+        total_annotations_bboxes = len(annotations)
 
         # If none exists for this class then we can safely skip
-        if total_true_bboxes == 0:
+        if total_annotations_bboxes == 0:
             continue
 
         for prediction_index, prediction in enumerate(predictions):
@@ -170,12 +170,12 @@ def calculate_map(inputs_boxes: list,
             best_iou = 0
             best_annotations_index = 0
 
-            for target_index, target in enumerate(annotations_image):
-                iou = calculate_iou(torch.tensor(prediction[3:]), torch.tensor(target[3:]))
+            for annotation_index, annotation in enumerate(annotations_image):
+                iou = calculate_iou(torch.tensor(prediction[3:]), torch.tensor(annotation[3:]))
 
                 if iou > best_iou:
                     best_iou = iou
-                    best_annotations_index = target_index
+                    best_annotations_index = annotation_index
 
             if best_iou > iou_threshold:
                 # Only detect ground truth detection once
@@ -194,7 +194,7 @@ def calculate_map(inputs_boxes: list,
         true_positive_cumsum = torch.cumsum(true_positive, dim=0)
         false_positive_cumsum = torch.cumsum(false_positive, dim=0)
 
-        recalls = true_positive_cumsum / (total_true_bboxes + eps)
+        recalls = true_positive_cumsum / (total_annotations_bboxes + eps)
         precisions = true_positive_cumsum / (true_positive_cumsum + false_positive_cumsum + eps)
         precisions = torch.cat((torch.tensor([1]), precisions))
         recalls = torch.cat((torch.tensor([0]), recalls))

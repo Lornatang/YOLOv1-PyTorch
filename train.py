@@ -20,7 +20,6 @@ import torch
 import torch.optim as optim
 from torch import nn
 from torch.cuda import amp
-from torch.optim import lr_scheduler
 from torch.utils.data import DataLoader
 from torch.utils.tensorboard import SummaryWriter
 
@@ -263,7 +262,7 @@ def train(model: nn.Module,
         if batch_index % config.print_frequency == 0:
             iters = batch_index + epoch * batches + 1
             writer.add_scalar("train/Loss", loss.item(), iters)
-            progress.display(batch_index)
+            progress.display(batch_index + 1)
 
         # Preload the next batch of data
         batch_data = train_prefetcher.next()

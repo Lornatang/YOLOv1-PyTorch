@@ -13,10 +13,12 @@
 # ==============================================================================
 import torch
 from torch import nn
+from torchvision.models.feature_extraction import create_feature_extractor
 
 from utils import calculate_iou
 
 __all__ = [
+    "YOLOv1TinyFeature", "YOLOv1Feature",
     "YOLOv1Tiny", "YOLOv1",
     "YOLOLoss",
 ]
@@ -37,45 +39,43 @@ class _BasicConvBlock(nn.Module):
         return out
 
 
-class YOLOv1Tiny(nn.Module):
-    def __init__(self, num_grid: int, num_bounding_boxes: int, num_classes: int) -> None:
-        super(YOLOv1Tiny, self).__init__()
-        self.num_grid = num_grid
-        self.num_bounding_boxes = num_bounding_boxes
-        self.num_classes = num_classes
-
+class YOLOv1TinyFeature(nn.Module):
+    def __init__(self, num_classes: int = 1000) -> None:
+        super(YOLOv1TinyFeature, self).__init__()
         self.features = nn.Sequential(
-            # 448*448*3 -> 224*224*16
+            # 224*224*3 -> 112*112*16
             _BasicConvBlock(3, 16, (3, 3), (1, 1), (1, 1)),
             nn.MaxPool2d((2, 2), (2, 2)),
 
-            # 224*224*16 -> 112*112*32
+            # 112*112*16 -> 56*56*32
             _BasicConvBlock(16, 32, (3, 3), (1, 1), (1, 1)),
             nn.MaxPool2d((2, 2), (2, 2)),
 
-            # 112*112*32 -> 56*56*64
+            # 56*56*32 -> 28*28*64
             _BasicConvBlock(32, 64, (3, 3), (1, 1), (1, 1)),
             nn.MaxPool2d((2, 2), (2, 2)),
 
-            # 56*56*64 -> 28*28*128
+            # 28*28*64 -> 14*14*128
             _BasicConvBlock(64, 128, (3, 3), (1, 1), (1, 1)),
             nn.MaxPool2d((2, 2), (2, 2)),
 
-            # 28*28*128 -> 14*14*256
+            # 14*14*128 -> 7*7*256
             _BasicConvBlock(128, 256, (3, 3), (1, 1), (1, 1)),
             nn.MaxPool2d((2, 2), (2, 2)),
 
-            # 14*14*256 -> 7*7*1024
+            # 7*7*256 -> 3*3*1024
             _BasicConvBlock(256, 512, (3, 3), (1, 1), (1, 1)),
             nn.MaxPool2d((2, 2), (2, 2)),
             _BasicConvBlock(512, 1024, (3, 3), (1, 1), (1, 1)),
         )
 
+        self.avgpool = nn.AdaptiveAvgPool2d((7, 7))
+
         self.classifier = nn.Sequential(
             nn.Linear(7 * 7 * 1024, 4096),
             nn.LeakyReLU(0.1, True),
             nn.Dropout(0.5),
-            nn.Linear(4096, num_grid * num_grid * (num_bounding_boxes * 5 + num_classes)),
+            nn.Linear(4096, num_classes),
         )
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
@@ -83,36 +83,33 @@ class YOLOv1Tiny(nn.Module):
 
     def _forward_impl(self, x: torch.Tensor) -> torch.Tensor:
         out = self.features(x)
+        out = self.avgpool(out)
         out = torch.flatten(out, 1)
         out = self.classifier(out)
 
         return out
 
 
-class YOLOv1(nn.Module):
-    def __init__(self, num_grid: int, num_bounding_boxes: int, num_classes: int) -> None:
-        super(YOLOv1, self).__init__()
-        self.num_grid = num_grid
-        self.num_bounding_boxes = num_bounding_boxes
-        self.num_classes = num_classes
-
+class YOLOv1Feature(nn.Module):
+    def __init__(self, num_classes: int = 1000) -> None:
+        super(YOLOv1Feature, self).__init__()
         self.features = nn.Sequential(
-            # 448*448*3 -> 112*112*64
+            # 224*224*3 -> 56*56*64
             _BasicConvBlock(3, 64, (7, 7), (2, 2), (1, 1)),
             nn.MaxPool2d((2, 2), (2, 2)),
 
-            # 112*112*64 -> 56*56*192
+            # 56*56*64 -> 28*28*192
             _BasicConvBlock(64, 192, (3, 3), (1, 1), (1, 1)),
             nn.MaxPool2d((2, 2), (2, 2)),
 
-            # 56*56*192 -> 28*28*512
+            # 28*28*192 -> 14*14*512
             _BasicConvBlock(192, 128, (1, 1), (1, 1), (0, 0)),
             _BasicConvBlock(128, 256, (3, 3), (1, 1), (1, 1)),
             _BasicConvBlock(256, 256, (1, 1), (1, 1), (0, 0)),
             _BasicConvBlock(256, 512, (3, 3), (1, 1), (1, 1)),
             nn.MaxPool2d((2, 2), (2, 2)),
 
-            # 28*28*512 -> 14*14*1024
+            # 14*14*512 -> 7*7*1024
             _BasicConvBlock(512, 256, (1, 1), (1, 1), (0, 0)),
             _BasicConvBlock(256, 512, (3, 3), (1, 1), (1, 1)),
             _BasicConvBlock(512, 256, (1, 1), (1, 1), (0, 0)),
@@ -125,7 +122,7 @@ class YOLOv1(nn.Module):
             _BasicConvBlock(512, 1024, (3, 3), (1, 1), (1, 1)),
             nn.MaxPool2d((2, 2), (2, 2)),
 
-            # 14*14*1024 -> 7*7*1024
+            # 7*7*1024 -> 3*3*1024
             _BasicConvBlock(1024, 512, (1, 1), (1, 1), (0, 0)),
             _BasicConvBlock(512, 1024, (3, 3), (1, 1), (1, 1)),
             _BasicConvBlock(1024, 512, (1, 1), (1, 1), (0, 0)),
@@ -136,6 +133,40 @@ class YOLOv1(nn.Module):
             _BasicConvBlock(1024, 1024, (3, 3), (1, 1), (1, 1)),
         )
 
+        self.avgpool = nn.AdaptiveAvgPool2d((7, 7))
+
+        self.classifier = nn.Sequential(
+            nn.Linear(7 * 7 * 1024, 4096),
+            nn.LeakyReLU(0.1, True),
+            nn.Dropout(0.5),
+            nn.Linear(4096, num_classes),
+        )
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        return self._forward_impl(x)
+
+    def _forward_impl(self, x: torch.Tensor) -> torch.Tensor:
+        out = self.features(x)
+        out = self.avgpool(out)
+        out = torch.flatten(out, 1)
+        out = self.classifier(out)
+
+        return out
+
+
+class YOLOv1Tiny(nn.Module):
+    def __init__(self,
+                 num_grid: int,
+                 num_bounding_boxes: int,
+                 num_classes: int,
+                 feature_node_name: str = "features.12.bcb.2") -> None:
+        super(YOLOv1Tiny, self).__init__()
+        self.num_grid = num_grid
+        self.num_bounding_boxes = num_bounding_boxes
+        self.num_classes = num_classes
+        self.feature_node_name = feature_node_name
+
+        self.features = create_feature_extractor(YOLOv1TinyFeature(), [feature_node_name])
         self.classifier = nn.Sequential(
             nn.Linear(7 * 7 * 1024, 4096),
             nn.LeakyReLU(0.1, True),
@@ -147,7 +178,38 @@ class YOLOv1(nn.Module):
         return self._forward_impl(x)
 
     def _forward_impl(self, x: torch.Tensor) -> torch.Tensor:
-        out = self.features(x)
+        out = self.features(x)[self.feature_node_name]
+        out = torch.flatten(out, 1)
+        out = self.classifier(out)
+
+        return out
+
+
+class YOLOv1(nn.Module):
+    def __init__(self,
+                 num_grid: int,
+                 num_bounding_boxes: int,
+                 num_classes: int,
+                 feature_node_name: str = "features.27.bcb.2") -> None:
+        super(YOLOv1, self).__init__()
+        self.num_grid = num_grid
+        self.num_bounding_boxes = num_bounding_boxes
+        self.num_classes = num_classes
+        self.feature_node_name = feature_node_name
+
+        self.features = create_feature_extractor(YOLOv1Feature(), [feature_node_name])
+        self.classifier = nn.Sequential(
+            nn.Linear(7 * 7 * 1024, 4096),
+            nn.LeakyReLU(0.1, True),
+            nn.Dropout(0.5),
+            nn.Linear(4096, num_grid * num_grid * (num_bounding_boxes * 5 + num_classes)),
+        )
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        return self._forward_impl(x)
+
+    def _forward_impl(self, x: torch.Tensor) -> torch.Tensor:
+        out = self.features(x)[self.feature_node_name]
         out = torch.flatten(out, 1)
         out = self.classifier(out)
 
@@ -222,5 +284,8 @@ class YOLOLoss(nn.Module):
 
         # Four loss count is YOLO loss!
         loss = boxes_loss + object_loss + non_object_loss + class_loss
+
+        # Loss = all loss / batch_size
+        loss /= inputs.size(0)
 
         return loss

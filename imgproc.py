@@ -21,7 +21,7 @@ from torchvision.transforms import functional as F
 from utils import convert_xywh_to_x1y1x2y2
 
 __all__ = [
-    "image_to_tensor",
+    "image_to_tensor", "tensor_to_image",
     "ImageAugment", "RelativeLabels", "AbsoluteLabels", "PadSquare", "RGBToHSV", "HSVToRGB",
     "AdjustBrightness", "AdjustSaturation", "Resize", "ToTensor",
 ]
@@ -55,6 +55,32 @@ def image_to_tensor(image: np.ndarray, range_norm: bool, half: bool) -> torch.Te
         tensor = tensor.half()
 
     return tensor
+
+
+def tensor_to_image(tensor: torch.Tensor, range_norm: bool, half: bool) -> np.ndarray:
+    """Convert the Tensor(NCWH) data type supported by PyTorch to the np.ndarray(WHC) image data type
+
+    Args:
+        tensor (torch.Tensor): Data types supported by PyTorch (NCHW), the data range is [0, 1]
+        range_norm (bool): Scale [-1, 1] data to between [0, 1]
+        half (bool): Whether to convert torch.float32 similarly to torch.half type.
+
+    Returns:
+        image (np.ndarray): Data types supported by PIL or OpenCV
+
+    Examples:
+        >>> example_tensor = torch.randn([1, 3, 448, 448])
+        >>> example_image = tensor_to_image(example_tensor, False, False)
+
+    """
+    if range_norm:
+        tensor = tensor.add(1.0).div(2.0)
+    if half:
+        tensor = tensor.half()
+
+    image = tensor.squeeze(0).permute(1, 2, 0).mul(255).clamp(0, 255).cpu().numpy().astype("uint8")
+
+    return image
 
 
 class ImageAugment(object):
