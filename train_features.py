@@ -42,8 +42,8 @@ parser.add_argument('data', metavar='DIR', default='data/ImageNet-1k(mini)',
                     help='path to dataset (default: data/ImageNet-1k(mini))')
 parser.add_argument('-j', '--workers', default=4, type=int, metavar='N',
                     help='number of data loading workers (default: 4)')
-parser.add_argument('--epochs', default=90, type=int, metavar='N',
-                    help='number of total epochs to run')
+parser.add_argument('--epochs', default=2280, type=int, metavar='N',
+                    help='number of total epochs to run (Iters: 800000)')
 parser.add_argument('--start-epoch', default=0, type=int, metavar='N',
                     help='manual epoch number (useful on restarts)')
 parser.add_argument('-b', '--batch-size', default=128, type=int,
@@ -53,8 +53,8 @@ parser.add_argument('-b', '--batch-size', default=128, type=int,
                          'using Data Parallel or Distributed Data Parallel')
 parser.add_argument('--lr', '--learning-rate', default=0.1, type=float,
                     metavar='LR', help='initial learning rate', dest='lr')
-parser.add_argument('--lr_power', '--learning-rate_power', default=4, type=float,
-                    metavar='LR', help='initial learning rate', dest='lr')
+parser.add_argument('--lr_power', default=4, type=float,
+                    metavar='LRP', help='initial learning rate', dest='lr_power')
 parser.add_argument('--momentum', default=0.9, type=float, metavar='M',
                     help='momentum')
 parser.add_argument('--wd', '--weight-decay', default=5e-4, type=float,
@@ -246,7 +246,7 @@ def main_worker(gpu, ngpus_per_node, args):
             train_sampler.set_epoch(epoch)
 
         # Implement DarkNet model poly lr scheduler
-        adjust_learning_rate_poly(optimizer, epoch, args.epochs, args.lr, args.lr_power)
+        adjust_learning_rate_poly(optimizer, epoch, len(train_loader), args.epochs, args.lr, args.lr_power)
 
         # train for one epoch
         train(train_loader, model, criterion, optimizer, epoch, args)
@@ -374,10 +374,14 @@ def validate(val_loader, model, criterion, args):
 
 
 # Implement DarkNet model poly lr scheduler
-def adjust_learning_rate_poly(optimizer, epoch, num_epochs, base_lr, power):
-    lr = base_lr * (1 - epoch / num_epochs) ** power
-    for param_group in optimizer.param_groups:
-        param_group['lr'] = lr
+def adjust_learning_rate_poly(optimizer, epoch, batches_per_epoch, num_epochs, base_lr, power):
+    # If iter < 1000, stop adjusting lr
+    if int(batches_per_epoch * epoch) > 1000:
+        lr = base_lr * (1 - epoch / num_epochs) ** power
+        for param_group in optimizer.param_groups:
+            param_group['lr'] = lr
+    else:
+        lr = base_lr
     return lr
 
 
