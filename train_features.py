@@ -33,7 +33,6 @@ import torch.utils.data
 import torch.utils.data.distributed
 import torchvision.datasets as datasets
 import torchvision.transforms as transforms
-from torch.optim.lr_scheduler import StepLR
 from torch.utils.data import Subset
 
 from model import YOLOv1TinyFeature, YOLOv1Feature
@@ -52,12 +51,14 @@ parser.add_argument('-b', '--batch-size', default=128, type=int,
                     help='mini-batch size (default: 128), this is the total '
                          'batch size of all GPUs on the current node when '
                          'using Data Parallel or Distributed Data Parallel')
-parser.add_argument('--lr', '--learning-rate', default=0.01, type=float,
+parser.add_argument('--lr', '--learning-rate', default=0.1, type=float,
+                    metavar='LR', help='initial learning rate', dest='lr')
+parser.add_argument('--lr_power', '--learning-rate_power', default=4, type=float,
                     metavar='LR', help='initial learning rate', dest='lr')
 parser.add_argument('--momentum', default=0.9, type=float, metavar='M',
                     help='momentum')
-parser.add_argument('--wd', '--weight-decay', default=1e-4, type=float,
-                    metavar='W', help='weight decay (default: 1e-4)',
+parser.add_argument('--wd', '--weight-decay', default=5e-4, type=float,
+                    metavar='W', help='weight decay (default: 5e-4)',
                     dest='weight_decay')
 parser.add_argument('-p', '--print-freq', default=10, type=int,
                     metavar='N', help='print frequency (default: 10)')
@@ -140,7 +141,7 @@ def main_worker(gpu, ngpus_per_node, args):
         dist.init_process_group(backend=args.dist_backend, init_method=args.dist_url,
                                 world_size=args.world_size, rank=args.rank)
     # create model
-    model = YOLOv1Feature()
+    model = YOLOv1TinyFeature()
 
     if not torch.cuda.is_available():
         print('using CPU, this will be slow')
@@ -171,12 +172,7 @@ def main_worker(gpu, ngpus_per_node, args):
     # define loss function (criterion), optimizer, and learning rate scheduler
     criterion = nn.CrossEntropyLoss().cuda(args.gpu)
 
-    optimizer = torch.optim.SGD(model.parameters(), args.lr,
-                                momentum=args.momentum,
-                                weight_decay=args.weight_decay)
-
-    """Sets the learning rate to the initial LR decayed by 10 every 30 epochs"""
-    scheduler = StepLR(optimizer, step_size=30, gamma=0.1)
+    optimizer = torch.optim.Adam(model.parameters(), args.lr)
 
     # optionally resume from a checkpoint
     if args.resume:
@@ -195,7 +191,6 @@ def main_worker(gpu, ngpus_per_node, args):
                 best_acc1 = best_acc1.to(args.gpu)
             model.load_state_dict(checkpoint['state_dict'])
             optimizer.load_state_dict(checkpoint['optimizer'])
-            scheduler.load_state_dict(checkpoint['scheduler'])
             print("=> loaded checkpoint '{}' (epoch {})"
                   .format(args.resume, checkpoint['epoch']))
         else:
@@ -250,13 +245,14 @@ def main_worker(gpu, ngpus_per_node, args):
         if args.distributed:
             train_sampler.set_epoch(epoch)
 
+        # Implement DarkNet model poly lr scheduler
+        adjust_learning_rate_poly(optimizer, epoch, args.epochs, args.lr, args.lr_power)
+
         # train for one epoch
         train(train_loader, model, criterion, optimizer, epoch, args)
 
         # evaluate on validation set
         acc1 = validate(val_loader, model, criterion, args)
-
-        scheduler.step()
 
         # remember best acc@1 and save checkpoint
         is_best = acc1 > best_acc1
@@ -269,7 +265,6 @@ def main_worker(gpu, ngpus_per_node, args):
                 'state_dict': model.state_dict(),
                 'best_acc1': best_acc1,
                 'optimizer': optimizer.state_dict(),
-                'scheduler': scheduler.state_dict()
             }, is_best)
 
 
@@ -376,6 +371,14 @@ def validate(val_loader, model, criterion, args):
     progress.display_summary()
 
     return top1.avg
+
+
+# Implement DarkNet model poly lr scheduler
+def adjust_learning_rate_poly(optimizer, epoch, num_epochs, base_lr, power):
+    lr = base_lr * (1 - epoch / num_epochs) ** power
+    for param_group in optimizer.param_groups:
+        param_group['lr'] = lr
+    return lr
 
 
 def save_checkpoint(state, is_best, filename='checkpoint.pth.tar'):
