@@ -157,13 +157,10 @@ class YOLOv1Feature(nn.Module):
 class YOLOv1Tiny(nn.Module):
     def __init__(self,
                  num_grid: int,
-                 num_bounding_boxes: int,
+                 num_bboxes: int,
                  num_classes: int,
                  feature_node_name: str = "features.12.bcb.2") -> None:
         super(YOLOv1Tiny, self).__init__()
-        self.num_grid = num_grid
-        self.num_bounding_boxes = num_bounding_boxes
-        self.num_classes = num_classes
         self.feature_node_name = feature_node_name
 
         self.features = create_feature_extractor(YOLOv1TinyFeature(), [feature_node_name])
@@ -171,7 +168,7 @@ class YOLOv1Tiny(nn.Module):
             nn.Linear(7 * 7 * 1024, 4096),
             nn.LeakyReLU(0.1, True),
             nn.Dropout(0.5),
-            nn.Linear(4096, num_grid * num_grid * (num_bounding_boxes * 5 + num_classes)),
+            nn.Linear(4096, num_grid * num_grid * (num_bboxes * 5 + num_classes)),
         )
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
@@ -188,13 +185,10 @@ class YOLOv1Tiny(nn.Module):
 class YOLOv1(nn.Module):
     def __init__(self,
                  num_grid: int,
-                 num_bounding_boxes: int,
+                 num_bboxes: int,
                  num_classes: int,
                  feature_node_name: str = "features.27.bcb.2") -> None:
         super(YOLOv1, self).__init__()
-        self.num_grid = num_grid
-        self.num_bounding_boxes = num_bounding_boxes
-        self.num_classes = num_classes
         self.feature_node_name = feature_node_name
 
         self.features = create_feature_extractor(YOLOv1Feature(), [feature_node_name])
@@ -202,7 +196,7 @@ class YOLOv1(nn.Module):
             nn.Linear(7 * 7 * 1024, 4096),
             nn.LeakyReLU(0.1, True),
             nn.Dropout(0.5),
-            nn.Linear(4096, num_grid * num_grid * (num_bounding_boxes * 5 + num_classes)),
+            nn.Linear(4096, num_grid * num_grid * (num_bboxes * 5 + num_classes)),
         )
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
@@ -220,13 +214,13 @@ class YOLOLoss(nn.Module):
     def __init__(self,
                  criterion: nn.MSELoss,
                  num_grid: int,
-                 num_bounding_boxes: int,
+                 num_bboxes: int,
                  num_classes: int,
                  eps: float = 1e-9) -> None:
         super().__init__()
         self.criterion = criterion
         self.num_grid = num_grid
-        self.num_bounding_boxes = num_bounding_boxes
+        self.num_bboxes = num_bboxes
         self.num_classes = num_classes
         self.eps = eps
 
@@ -236,7 +230,7 @@ class YOLOLoss(nn.Module):
 
     def forward(self, inputs: torch.Tensor, target: torch.Tensor) -> torch.Tensor:
         # Convert output shape to [batch_size, num_grid, num_grid, num_classes+num_bounding_boxes*5]
-        inputs = inputs.view([-1, self.num_grid, self.num_grid, self.num_classes + self.num_bounding_boxes * 5])
+        inputs = inputs.view([-1, self.num_grid, self.num_grid, self.num_classes + self.num_bboxes * 5])
 
         # Calculate IoU for the two predicted bounding boxes with target bbox
         inputs_iou = calculate_iou(inputs[..., 21:25], target[..., 21:25])
