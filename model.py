@@ -69,10 +69,10 @@ class YOLOv1TinyFeature(nn.Module):
             _BasicConvBlock(512, 1024, (3, 3), (1, 1), (1, 1)),
         )
 
-        self.avgpool = nn.AdaptiveAvgPool2d((7, 7))
+        self.avgpool = nn.AdaptiveAvgPool2d((3, 3))
 
         self.classifier = nn.Sequential(
-            nn.Linear(7 * 7 * 1024, 4096),
+            nn.Linear(3 * 3 * 1024, 4096),
             nn.LeakyReLU(0.1, True),
             nn.Dropout(0.5),
             nn.Linear(4096, num_classes),
@@ -133,10 +133,10 @@ class YOLOv1Feature(nn.Module):
             _BasicConvBlock(1024, 1024, (3, 3), (1, 1), (1, 1)),
         )
 
-        self.avgpool = nn.AdaptiveAvgPool2d((7, 7))
+        self.avgpool = nn.AdaptiveAvgPool2d((3, 3))
 
         self.classifier = nn.Sequential(
-            nn.Linear(7 * 7 * 1024, 4096),
+            nn.Linear(3 * 3 * 1024, 4096),
             nn.LeakyReLU(0.1, True),
             nn.Dropout(0.5),
             nn.Linear(4096, num_classes),
