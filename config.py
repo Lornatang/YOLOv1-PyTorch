@@ -37,7 +37,7 @@ model_num_classes = 20
 # Current configuration parameter method
 mode = "train"
 # Experiment name, easy to save weights and log files
-exp_name = "YOLOv1Tiny_baseline"
+exp_name = "YOLOv1Tiny"
 
 if mode == "train":
     # Dataset setting
@@ -50,23 +50,26 @@ if mode == "train":
     batch_size = 16
     num_workers = 4
 
+    # The address to load the pretrained model
+    pretrained_model_path = "./results/pretrained_models/YOLOv1TinyFeature-ImageNet_1K(mini)-c9be2973.pth.tar"
+
     # Incremental training and migration training
     resume = ""
 
     # Total num epochs
     epochs = 135
 
-    # Optimizer parameter. SGD is slow, so I use Adam
-    model_lr = 2e-5
-    model_betas = (0.9, 0.99)
-    model_weight_decay = 0
+    # Optimizer parameter
+    optim_lr = 1e-3
+    optim_momentum = 0.9
+    optim_weight_decay = 5e-4
 
     # Detection parameters
     iou_threshold = 0.5
     confidence_threshold = 0.4
 
     # How many iterations to print the training result
-    print_frequency = 100
+    print_frequency = 10
 
 if mode == "test":
     # Dataset setting
@@ -81,6 +84,7 @@ if mode == "test":
 
     # Detection parameters
     iou_threshold = 0.5
-    confidence_threshold = 0.4
+    confidence_threshold = 0.0
 
-    model_path = "./results/pretrained_models/YOLOv1Tiny-VOC0712-xxxxxxxx.pth.tar"
+    # model_path = "./results/pretrained_models/YOLOv1Tiny-VOC0712-xxxxxxxx.pth.tar"
+    model_path = "./samples/YOLOv1Tiny/epoch_3.pth.tar"

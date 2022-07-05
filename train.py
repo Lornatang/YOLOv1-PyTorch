@@ -34,7 +34,7 @@ def main():
     start_epoch = 0
 
     # Initialize training to generate network evaluation indicators
-    best_map = 0.0
+    best_map05 = 0.0
 
     train_prefetcher, test_prefetcher = load_dataset()
     print("Load all datasets successfully.")
@@ -48,13 +48,28 @@ def main():
     optimizer = define_optimizer(model)
     print("Define optimizer functions successfully.")
 
-    print("Check whether the resume model is restored...")
+    print("Check whether to load pretrained model weights...")
+    if config.pretrained_model_path:
+        # Load checkpoint model
+        checkpoint = torch.load(config.pretrained_model_path, map_location=lambda storage, loc: storage)
+        # Load model state dict. Extract the fitted model weights
+        model_state_dict = model.state_dict()
+        state_dict = {k: v for k, v in checkpoint["state_dict"].items() if
+                      k in model_state_dict.keys() and v.size() == model_state_dict[k].size()}
+        # Overwrite the model weights to the current model
+        model_state_dict.update(state_dict)
+        model.load_state_dict(model_state_dict)
+        print(f"Loaded `{config.pretrained_model_path}` pretrained model weights successfully.")
+    else:
+        print("Pretrained model weights not found.")
+
+    print("Check whether the pretrained model is restored...")
     if config.resume:
         # Load checkpoint model
         checkpoint = torch.load(config.resume, map_location=lambda storage, loc: storage)
         # Restore the parameters in the training node to this point
         start_epoch = checkpoint["epoch"]
-        best_map = checkpoint["best_mAP"]
+        best_map05 = checkpoint["best_mAP0.5"]
         # Load checkpoint state dict. Extract the fitted model weights
         model_state_dict = model.state_dict()
         new_state_dict = {k: v for k, v in checkpoint["state_dict"].items() if k in model_state_dict.keys()}
@@ -63,7 +78,10 @@ def main():
         model.load_state_dict(model_state_dict)
         # Load the optimizer model
         optimizer.load_state_dict(checkpoint["optimizer"])
-        print("Loaded resume model weights.")
+        print(f"Loaded `{config.resume}` resume model weights successfully. "
+              f"Resume training from epoch {start_epoch + 1}.")
+    else:
+        print("Resume training model not found. Start training from scratch.")
 
     # Create a folder of super-resolution experiment results
     samples_dir = os.path.join("samples", config.exp_name)
@@ -80,6 +98,9 @@ def main():
     scaler = amp.GradScaler()
 
     for epoch in range(start_epoch, config.epochs):
+        # Implement YOLOv1 paper lr scheduler
+        adjust_learning_rate(optimizer, epoch + 1)
+
         train(model,
               train_prefetcher,
               yolo_criterion,
@@ -91,10 +112,10 @@ def main():
         print("\n")
 
         # Automatically save the model with the highest index
-        is_best = map_value > best_map
-        best_map = max(map_value, best_map)
+        is_best = map_value > best_map05
+        best_map05 = max(map_value, best_map05)
         torch.save({"epoch": epoch + 1,
-                    "best_mAP": best_map,
+                    "best_mAP0.5": best_map05,
                     "state_dict": model.state_dict(),
                     "optimizer": optimizer.state_dict()},
                    os.path.join(samples_dir, f"epoch_{epoch + 1}.pth.tar"))
@@ -165,7 +186,7 @@ def build_model() -> nn.Module:
 
 
 def define_loss() -> YOLOLoss:
-    criterion = nn.MSELoss(reduction="sum")
+    criterion = nn.MSELoss()
     # Transfer to CUDA
     criterion = criterion.to(device=config.device, memory_format=torch.channels_last)
 
@@ -176,11 +197,11 @@ def define_loss() -> YOLOLoss:
     return yolo_criterion
 
 
-def define_optimizer(model: nn.Module) -> optim.Adam:
-    optimizer = optim.Adam(model.parameters(),
-                           config.model_lr,
-                           config.model_betas,
-                           weight_decay=config.model_weight_decay)
+def define_optimizer(model: nn.Module) -> optim.SGD:
+    optimizer = optim.SGD(model.parameters(),
+                           lr=config.optim_lr,
+                           momentum=config.optim_momentum,
+                           weight_decay=config.optim_weight_decay)
 
     return optimizer
 
@@ -188,7 +209,7 @@ def define_optimizer(model: nn.Module) -> optim.Adam:
 def train(model: nn.Module,
           train_prefetcher: CUDAPrefetcher,
           yolo_criterion: YOLOLoss,
-          optimizer: optim.Adam,
+          optimizer: optim.SGD,
           epoch: int,
           scaler: amp.GradScaler,
           writer: SummaryWriter) -> None:
@@ -198,7 +219,7 @@ def train(model: nn.Module,
         model (nn.Module): YOLO model
         train_prefetcher (CUDAPrefetcher): training dataset iterator
         yolo_criterion (YOLOLoss): Calculate the feature difference between real samples and fake samples by the feature extraction model
-        optimizer (optim.Adam): an optimizer for optimizing generator models in YOLO networks
+        optimizer (optim.SGD): an optimizer for optimizing generator models in YOLO networks
         epoch (int): number of training epochs during training the YOLO network
         scaler (amp.GradScaler): Mixed precision training function
         writer (SummaryWrite): log file management function
@@ -349,6 +370,25 @@ def validate(model: nn.Module,
         raise ValueError("Unsupported mode, please use `valid` or `test`.")
 
     return map_value
+
+
+# Implement YOLOv1 paper lr scheduler
+def adjust_learning_rate(optimizer, epoch):
+    if epoch == 1:
+        lr = 1e-3
+    elif 1 <= epoch < 75:
+        lr = 1e-2
+    elif 75 <= epoch < 105:
+        lr = 1e-3
+    elif 105 <= epoch < 135:
+        lr = 1e-4
+    else:
+        lr = 1e-4
+
+    for param_group in optimizer.param_groups:
+        param_group["lr"] = lr
+
+    return lr
 
 
 class Summary(Enum):
