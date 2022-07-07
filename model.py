@@ -95,7 +95,7 @@ class YOLOv1TinyFeature(nn.Module):
     def _initialize_weights(self) -> None:
         for m in self.modules():
             if isinstance(m, nn.Conv2d):
-                nn.init.kaiming_normal_(m.weight, mode="fan_out", nonlinearity="leaky_relu")
+                nn.init.kaiming_normal_(m.weight, mode="fan_in", nonlinearity="leaky_relu")
                 if m.bias is not None:
                     nn.init.constant_(m.bias, 0)
             elif isinstance(m, nn.BatchNorm2d):
@@ -175,7 +175,7 @@ class YOLOv1Feature(nn.Module):
     def _initialize_weights(self) -> None:
         for m in self.modules():
             if isinstance(m, nn.Conv2d):
-                nn.init.kaiming_normal_(m.weight, mode="fan_out", nonlinearity="leaky_relu")
+                nn.init.kaiming_normal_(m.weight, mode="fan_in", nonlinearity="leaky_relu")
                 if m.bias is not None:
                     nn.init.constant_(m.bias, 0)
             elif isinstance(m, nn.BatchNorm2d):
@@ -244,13 +244,12 @@ class YOLOv1(nn.Module):
 
 class YOLOLoss(nn.Module):
     def __init__(self,
-                 criterion: nn.MSELoss,
                  num_grid: int,
                  num_bboxes: int,
                  num_classes: int,
                  eps: float = 1e-9) -> None:
         super().__init__()
-        self.criterion = criterion
+        self.criterion = nn.MSELoss()
         self.num_grid = num_grid
         self.num_bboxes = num_bboxes
         self.num_classes = num_classes
@@ -260,7 +259,10 @@ class YOLOLoss(nn.Module):
         self.boxes_coefficient_loss = 5
         self.non_object_coefficient_loss = 0.5
 
-    def forward(self, inputs: torch.Tensor, target: torch.Tensor) -> torch.Tensor:
+    def forward(self,
+                inputs: torch.Tensor,
+                target: torch.Tensor) -> [torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
+
         # Convert output shape to [batch_size, num_grid, num_grid, num_classes+num_bounding_boxes*5]
         inputs = inputs.view([-1, self.num_grid, self.num_grid, self.num_classes + self.num_bboxes * 5])
 
@@ -288,8 +290,8 @@ class YOLOLoss(nn.Module):
         inputs_box[..., 2:4] = torch.sign(inputs_box[..., 2:4]) * torch.sqrt(torch.abs(inputs_box[..., 2:4] + self.eps))
         target_box[..., 2:4] = torch.sqrt(target_box[..., 2:4])
 
-        boxes_loss = self.criterion(torch.flatten(inputs_box, end_dim=-2), torch.flatten(target_box, end_dim=-2))
-        boxes_loss = torch.mul(boxes_loss, self.boxes_coefficient_loss)
+        bboxes_loss = self.criterion(torch.flatten(inputs_box, end_dim=-2), torch.flatten(target_box, end_dim=-2))
+        bboxes_loss = torch.mul(bboxes_loss, self.boxes_coefficient_loss)
 
         # Calculate object loss
         # The inputs_boxes is the confidence score for the bbox with highest IoU
@@ -316,6 +318,6 @@ class YOLOLoss(nn.Module):
                                     torch.flatten(exists_boxes * target[..., :self.num_classes], end_dim=-2))
 
         # Four loss count is YOLO loss!
-        loss = boxes_loss + object_loss + non_object_loss + class_loss
+        loss = bboxes_loss + object_loss + non_object_loss + class_loss
 
-        return loss
+        return bboxes_loss, object_loss, non_object_loss, class_loss, loss

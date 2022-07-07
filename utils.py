@@ -206,12 +206,13 @@ def calculate_map(predictions_bboxes: list,
     return map_value
 
 
-def convert_cell_boxes_to_boxes(bboxes: torch.Tensor, num_grid: int) -> list:
+def convert_cell_boxes_to_boxes(bboxes: torch.Tensor, num_grid: int, num_classes: int) -> list:
     """Convert YOLO-specific meshes to computational meshes
 
     Args:
         bboxes (torch.Tensor): YOLO predictions out
         num_grid (int): Number of grids in YOLO
+        num_classes (int): Number of class
 
     Returns:
         new_bounding_boxes (list): Computational bounding boxes
@@ -220,10 +221,10 @@ def convert_cell_boxes_to_boxes(bboxes: torch.Tensor, num_grid: int) -> list:
     # Converts bounding boxes output from Yolo
     bboxes = bboxes.cpu()
     batch_size = bboxes.shape[0]
-    bboxes = bboxes.reshape(batch_size, 7, 7, 30)
-    bboxes1 = bboxes[..., 21:25]
-    bboxes2 = bboxes[..., 26:30]
-    scores = torch.cat([bboxes[..., 20].unsqueeze(0), bboxes[..., 25].unsqueeze(0)], 0)
+    bboxes = bboxes.reshape(batch_size, 7, 7, num_classes + 10)
+    bboxes1 = bboxes[..., num_classes + 1:num_classes + 5]
+    bboxes2 = bboxes[..., num_classes + 6:num_classes + 10]
+    scores = torch.cat([bboxes[..., num_classes].unsqueeze(0), bboxes[..., num_classes+5].unsqueeze(0)], 0)
     best_box = scores.argmax(0).unsqueeze(-1)
     best_boxes = bboxes1 * (1 - best_box) + best_box * bboxes2
     cell_indices = torch.arange(7).repeat(batch_size, 7, 1).unsqueeze(-1)
@@ -231,8 +232,8 @@ def convert_cell_boxes_to_boxes(bboxes: torch.Tensor, num_grid: int) -> list:
     y = 1 / num_grid * (best_boxes[..., 1:2] + cell_indices.permute(0, 2, 1, 3))
     w_y = 1 / num_grid * best_boxes[..., 2:4]
     converted_bboxes = torch.cat((x, y, w_y), dim=-1)
-    predicted_class = bboxes[..., :20].argmax(-1).unsqueeze(-1)
-    best_confidence = torch.max(bboxes[..., 20], bboxes[..., 25]).unsqueeze(-1)
+    predicted_class = bboxes[..., :num_classes].argmax(-1).unsqueeze(-1)
+    best_confidence = torch.max(bboxes[..., num_classes], bboxes[..., num_classes+5]).unsqueeze(-1)
     converted_predictions = torch.cat([predicted_class, best_confidence, converted_bboxes], -1)
 
     # Convert YOLO-specific grid to computational grid

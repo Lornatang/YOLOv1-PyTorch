@@ -89,8 +89,12 @@ def main() -> None:
             # Use the generator model to generate a fake sample
             predictions = model(images)
 
-            predictions_bboxes = convert_cell_boxes_to_boxes(predictions, config.model_num_grid)
-            annotations_bboxes = convert_cell_boxes_to_boxes(annotations, config.model_num_grid)
+            predictions_bboxes = convert_cell_boxes_to_boxes(predictions,
+                                                             config.model_num_grid,
+                                                             config.model_num_classes)
+            annotations_bboxes = convert_cell_boxes_to_boxes(annotations,
+                                                             config.model_num_grid,
+                                                             config.model_num_classes)
 
             for index in range(images.size(0)):
                 nms_predictions_bboxes = nms(predictions_bboxes[index],

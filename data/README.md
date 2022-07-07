@@ -72,4 +72,5 @@ python run.py
 - VOCdevkit
     - ...
 - voc_classes.txt
+- voc_colors.txt
 ```

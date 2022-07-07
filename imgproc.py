@@ -87,57 +87,57 @@ class ImageAugment(object):
     def __init__(self, augment_functions: iaa.Sequential) -> None:
         self.augment_functions = augment_functions
 
-    def __call__(self, image: np.ndarray, annotation: np.ndarray) -> [np.ndarray, np.ndarray]:
+    def __call__(self, image: np.ndarray, target: np.ndarray) -> [np.ndarray, np.ndarray]:
         # Convert bboxes shape to x1y1x2y2
-        annotation = np.array(annotation)
-        annotation[:, 1:] = convert_xywh_to_x1y1x2y2(annotation[:, 1:])
+        target = np.array(target)
+        target[:, 1:] = convert_xywh_to_x1y1x2y2(target[:, 1:])
 
         # Convert bboxes to image augment
-        annotation = BoundingBoxesOnImage(
-            [BoundingBox(boxes[1], boxes[2], boxes[3], boxes[4], boxes[0]) for boxes in annotation],
+        target_bboxes = BoundingBoxesOnImage(
+            [BoundingBox(boxes[1], boxes[2], boxes[3], boxes[4], boxes[0]) for boxes in target],
             image.shape)
 
         # Apply augmentations
-        image, annotation = self.augment_functions(image, annotation)
+        image, target_bboxes = self.augment_functions(image=image, bounding_boxes=target_bboxes)
 
         # Clip out of image boxes
-        annotation = annotation.clip_out_of_image()
+        target_bboxes = target_bboxes.clip_out_of_image()
 
         # Convert bounding boxes back to numpy
-        new_annotation = np.zeros((len(annotation), 5))
-        for annotation_index, annotation in enumerate(annotation):
+        target = np.zeros((len(target_bboxes), 5))
+        for target_bboxes_index, bboxes in enumerate(target_bboxes):
             # Extract coordinates for un-padded + unscaled image
-            x1 = annotation.x1
-            y1 = annotation.y1
-            x2 = annotation.x2
-            y2 = annotation.y2
+            x1 = bboxes.x1
+            y1 = bboxes.y1
+            x2 = bboxes.x2
+            y2 = bboxes.y2
 
             # Returns (x, y, w, h)
-            new_annotation[annotation_index, 0] = annotation.label
-            new_annotation[annotation_index, 1] = ((x1 + x2) / 2)
-            new_annotation[annotation_index, 2] = ((y1 + y2) / 2)
-            new_annotation[annotation_index, 3] = (x2 - x1)
-            new_annotation[annotation_index, 4] = (y2 - y1)
+            target[target_bboxes_index, 0] = bboxes.label
+            target[target_bboxes_index, 1] = ((x1 + x2) / 2)
+            target[target_bboxes_index, 2] = ((y1 + y2) / 2)
+            target[target_bboxes_index, 3] = (x2 - x1)
+            target[target_bboxes_index, 4] = (y2 - y1)
 
-        return image, new_annotation
+        return image, target
 
 
 class RelativeLabels(object):
-    def __call__(self, image: np.ndarray, annotation: np.ndarray) -> [np.ndarray, np.ndarray]:
+    def __call__(self, image: np.ndarray, target: np.ndarray) -> [np.ndarray, np.ndarray]:
         image_height, image_width, _ = image.shape
-        annotation[:, [1, 3]] /= image_width
-        annotation[:, [2, 4]] /= image_height
+        target[:, [1, 3]] /= image_width
+        target[:, [2, 4]] /= image_height
 
-        return image, annotation
+        return image, target
 
 
 class AbsoluteLabels(object):
-    def __call__(self, image: np.ndarray, annotation: np.ndarray) -> [np.ndarray, np.ndarray]:
+    def __call__(self, image: np.ndarray, target: np.ndarray) -> [np.ndarray, np.ndarray]:
         image_height, image_width, _ = image.shape
-        annotation[:, [1, 3]] *= image_width
-        annotation[:, [2, 4]] *= image_height
+        target[:, [1, 3]] *= image_width
+        target[:, [2, 4]] *= image_height
 
-        return image, annotation
+        return image, target
 
 
 class PadSquare(ImageAugment):
@@ -189,11 +189,36 @@ class Resize(ImageAugment):
 
 
 class ToTensor(object):
-    def __call__(self, image: np.ndarray, annotation: np.ndarray) -> [torch.Tensor, torch.Tensor]:
+    def __call__(self, image: np.ndarray, target: np.ndarray) -> [torch.Tensor, torch.Tensor]:
         # Convert Numpy format to PyTorch format
-        image = F.to_tensor(image)
+        image_tensor = F.to_tensor(image)
 
-        annotation = torch.zeros((len(annotation), 6))
-        annotation[:, 1:] = F.to_tensor(annotation)
+        target_tensor = torch.zeros((len(target), 6))
+        target_tensor[:, 1:] = F.to_tensor(target)
 
-        return image, annotation
+        return image_tensor, target_tensor
+
+
+class DefaultAugment(ImageAugment):
+    def __init__(self):
+        super(DefaultAugment, self).__init__()
+        self.augment_functions = iaa.Sequential([
+            iaa.Sharpen((0.0, 0.1)),
+            iaa.Affine(rotate=(-0, 0), translate_percent=(-0.1, 0.1), scale=(0.8, 1.5)),
+            iaa.AddToBrightness((-60, 40)),
+            iaa.AddToHue((-10, 10)),
+            iaa.Fliplr(0.5),
+        ])
+
+
+class ImproveAugment(ImageAugment):
+    def __init__(self):
+        super(ImproveAugment, self).__init__()
+        self.augment_functions = iaa.Sequential([
+            iaa.Dropout([0.0, 0.01]),
+            iaa.Sharpen((0.0, 0.1)),
+            iaa.Affine(rotate=(-10, 10), translate_percent=(-0.1, 0.1), scale=(0.8, 1.5)),
+            iaa.AddToBrightness((-60, 40)),
+            iaa.AddToHue((-20, 20)),
+            iaa.Fliplr(0.5),
+        ])

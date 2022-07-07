@@ -11,6 +11,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
+import math
 import os
 import shutil
 import time
@@ -34,7 +35,7 @@ def main():
     start_epoch = 0
 
     # Initialize training to generate network evaluation indicators
-    best_map05 = 0.0
+    best_map = 0.0
 
     train_prefetcher, test_prefetcher = load_dataset()
     print("Load all datasets successfully.")
@@ -69,7 +70,7 @@ def main():
         checkpoint = torch.load(config.resume, map_location=lambda storage, loc: storage)
         # Restore the parameters in the training node to this point
         start_epoch = checkpoint["epoch"]
-        best_map05 = checkpoint["best_mAP0.5"]
+        best_map = checkpoint["best_mAP"]
         # Load checkpoint state dict. Extract the fitted model weights
         model_state_dict = model.state_dict()
         new_state_dict = {k: v for k, v in checkpoint["state_dict"].items() if k in model_state_dict.keys()}
@@ -99,7 +100,7 @@ def main():
 
     for epoch in range(start_epoch, config.epochs):
         # Implement YOLOv1 paper lr scheduler
-        adjust_learning_rate(optimizer, epoch + 1)
+        adjust_learning_rate(optimizer, epoch + 1, config.epochs)
 
         train(model,
               train_prefetcher,
@@ -112,10 +113,10 @@ def main():
         print("\n")
 
         # Automatically save the model with the highest index
-        is_best = map_value > best_map05
-        best_map05 = max(map_value, best_map05)
+        is_best = map_value > best_map
+        best_map = max(map_value, best_map)
         torch.save({"epoch": epoch + 1,
-                    "best_mAP0.5": best_map05,
+                    "best_mAP": best_map,
                     "state_dict": model.state_dict(),
                     "optimizer": optimizer.state_dict()},
                    os.path.join(samples_dir, f"epoch_{epoch + 1}.pth.tar"))
@@ -131,16 +132,16 @@ def main():
 def load_dataset() -> [CUDAPrefetcher, CUDAPrefetcher]:
     # Load train, test and valid datasets
     train_datasets = ImageDataset(config.train_file_index_path,
-                                  config.images_dir,
-                                  config.annotations_dir,
+                                  config.train_images_dir,
+                                  config.train_labels_dir,
                                   config.image_size,
                                   config.model_num_grid,
                                   config.model_num_bboxes,
                                   config.model_num_classes,
                                   "train")
     test_datasets = ImageDataset(config.test_file_index_path,
-                                 config.images_dir,
-                                 config.annotations_dir,
+                                 config.test_images_dir,
+                                 config.test_labels_dir,
                                  config.image_size,
                                  config.model_num_grid,
                                  config.model_num_bboxes,
@@ -180,28 +181,24 @@ def build_model() -> nn.Module:
         model = YOLOv1Tiny(config.model_num_grid, config.model_num_bboxes, config.model_num_classes)
 
     # Transfer to CUDA
-    model = model.to(device=config.device, memory_format=torch.channels_last)
+    model = model.to(device=config.device)
 
     return model
 
 
 def define_loss() -> YOLOLoss:
-    criterion = nn.MSELoss()
+    yolo_criterion = YOLOLoss(config.model_num_grid, config.model_num_bboxes, config.model_num_classes)
     # Transfer to CUDA
-    criterion = criterion.to(device=config.device, memory_format=torch.channels_last)
-
-    yolo_criterion = YOLOLoss(criterion, config.model_num_grid, config.model_num_bboxes, config.model_num_classes)
-    # Transfer to CUDA
-    yolo_criterion = yolo_criterion.to(device=config.device, memory_format=torch.channels_last)
+    yolo_criterion = yolo_criterion.to(device=config.device)
 
     return yolo_criterion
 
 
 def define_optimizer(model: nn.Module) -> optim.SGD:
     optimizer = optim.SGD(model.parameters(),
-                           lr=config.optim_lr,
-                           momentum=config.optim_momentum,
-                           weight_decay=config.optim_weight_decay)
+                          lr=config.optim_lr,
+                          momentum=config.optim_momentum,
+                          weight_decay=config.optim_weight_decay)
 
     return optimizer
 
@@ -231,9 +228,19 @@ def train(model: nn.Module,
     # Print information of progress bar during training
     batch_time = AverageMeter("Time", ":6.3f")
     data_time = AverageMeter("Data", ":6.3f")
+    bboxes_losses = AverageMeter("BBoxes loss", ":6.6f")
+    object_losses = AverageMeter("Object loss", ":6.6f")
+    non_object_losses = AverageMeter("Non-Object loss", ":6.6f")
+    class_losses = AverageMeter("Class loss", ":6.6f")
     losses = AverageMeter("Loss", ":6.6f")
     progress = ProgressMeter(batches,
-                             [batch_time, data_time, losses],
+                             [batch_time,
+                              data_time,
+                              bboxes_losses,
+                              object_losses,
+                              non_object_losses,
+                              class_losses,
+                              losses],
                              prefix=f"Epoch: [{epoch + 1}]")
 
     # Put the YOLO network model in training mode
@@ -254,26 +261,30 @@ def train(model: nn.Module,
         data_time.update(time.time() - end)
 
         # Transfer in-memory data to CUDA devices to speed up training
-        images = batch_data["image"].to(device=config.device,
-                                        memory_format=torch.channels_last,
-                                        non_blocking=True)
-        target = batch_data["annotation"].to(device=config.device,
-                                             memory_format=torch.channels_last,
-                                             non_blocking=True)
+        images = batch_data["image"].to(device=config.device, non_blocking=True)
+        targets = batch_data["target"].to(device=config.device, non_blocking=True)
+
+        # Get batch size
+        batch_size = images.size(0)
+
         # Initialize the YOLO model gradients
         model.zero_grad(set_to_none=True)
 
         # Back-propagate and update gradient
         with amp.autocast():
-            output = model(images)
-            loss = yolo_criterion(output, target)
+            predictions = model(images)
+            bboxes_loss, object_loss, non_object_loss, class_loss, loss = yolo_criterion(predictions, targets)
 
         scaler.scale(loss).backward()
         scaler.step(optimizer)
         scaler.update()
 
         # Statistical loss value for terminal data output
-        losses.update(loss.item(), images.size(0))
+        bboxes_losses.update(bboxes_loss.item(), batch_size)
+        object_losses.update(object_loss.item(), batch_size)
+        non_object_losses.update(non_object_loss.item(), batch_size)
+        class_losses.update(class_loss.item(), batch_size)
+        losses.update(loss.item(), batch_size)
 
         # Calculate the time it takes to fully train a batch of data
         batch_time.update(time.time() - end)
@@ -282,6 +293,10 @@ def train(model: nn.Module,
         # Write the data during training to the training log file
         if batch_index % config.print_frequency == 0:
             iters = batch_index + epoch * batches + 1
+            writer.add_scalar("train/BBoxes_Loss", bboxes_loss.item(), iters)
+            writer.add_scalar("train/Object_Loss", object_loss.item(), iters)
+            writer.add_scalar("train/NonObject_Loss", non_object_loss.item(), iters)
+            writer.add_scalar("train/Class_Loss", class_loss.item(), iters)
             writer.add_scalar("train/Loss", loss.item(), iters)
             progress.display(batch_index + 1)
 
@@ -315,7 +330,7 @@ def validate(model: nn.Module,
 
     # Initialize all bboxes
     predictions_bboxes_list = []
-    annotations_bboxes_list = []
+    targets_bboxes_list = []
 
     # Initialize the data loader and load the first batch of data
     data_prefetcher.reset()
@@ -324,19 +339,19 @@ def validate(model: nn.Module,
     with torch.no_grad():
         while batch_data is not None:
             # Transfer the in-memory data to the CUDA device to speed up the test
-            images = batch_data["image"].to(device=config.device,
-                                            memory_format=torch.channels_last,
-                                            non_blocking=True)
-            annotations = batch_data["annotation"].to(device=config.device,
-                                                      memory_format=torch.channels_last,
-                                                      non_blocking=True)
+            images = batch_data["image"].to(device=config.device, non_blocking=True)
+            targets = batch_data["target"].to(device=config.device, non_blocking=True)
 
             # Use the generator model to generate a fake sample
             with amp.autocast():
                 predictions = model(images)
 
-            predictions_bboxes = convert_cell_boxes_to_boxes(predictions, config.model_num_grid)
-            annotations_bboxes = convert_cell_boxes_to_boxes(annotations, config.model_num_grid)
+            predictions_bboxes = convert_cell_boxes_to_boxes(predictions,
+                                                             config.model_num_grid,
+                                                             config.model_num_classes)
+            targets_bboxes = convert_cell_boxes_to_boxes(targets,
+                                                         config.model_num_grid,
+                                                         config.model_num_classes)
 
             for index in range(images.size(0)):
                 nms_predictions_bboxes = nms(predictions_bboxes[index],
@@ -346,9 +361,9 @@ def validate(model: nn.Module,
                 for nms_prediction_bboxes in nms_predictions_bboxes:
                     predictions_bboxes_list.append([total_index] + nms_prediction_bboxes)
 
-                for annotation_bboxes in annotations_bboxes[index]:
+                for annotation_bboxes in targets_bboxes[index]:
                     if annotation_bboxes[1] > config.confidence_threshold:
-                        annotations_bboxes_list.append([total_index] + annotation_bboxes)
+                        targets_bboxes_list.append([total_index] + annotation_bboxes)
 
                 total_index += 1
 
@@ -357,7 +372,7 @@ def validate(model: nn.Module,
 
     # Calculate mAP value for dataset
     map_value = calculate_map(predictions_bboxes_list,
-                              annotations_bboxes_list,
+                              targets_bboxes_list,
                               config.iou_threshold,
                               config.model_num_classes)
 
@@ -373,22 +388,25 @@ def validate(model: nn.Module,
 
 
 # Implement YOLOv1 paper lr scheduler
-def adjust_learning_rate(optimizer, epoch):
-    if epoch == 1:
-        lr = 1e-3
-    elif 1 <= epoch < 75:
-        lr = 1e-2
-    elif 75 <= epoch < 105:
-        lr = 1e-3
-    elif 105 <= epoch < 135:
-        lr = 1e-4
+def adjust_learning_rate(optimizer: optim.SGD, current_epoch: int, epochs: int) -> None:
+    # Get current learning rate
+    current_lr = config.optim_lr
+    for param_group in optimizer.param_groups:
+        current_lr = param_group["lr"]
+
+    if math.ceil(epochs / current_epoch) == 2:
+        current_lr *= 2.5
+    elif math.ceil(epochs / current_epoch) == 3:
+        current_lr *= 2
+    elif math.ceil(epochs / current_epoch) == 78:
+        current_lr *= 0.1
+    elif math.ceil(epochs / current_epoch) == 117:
+        current_lr *= 0.1
     else:
-        lr = 1e-4
+        current_lr = current_lr
 
     for param_group in optimizer.param_groups:
-        param_group["lr"] = lr
-
-    return lr
+        param_group["lr"] = current_lr
 
 
 class Summary(Enum):

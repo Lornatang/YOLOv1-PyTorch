@@ -27,7 +27,7 @@ class ImageDataset(Dataset):
     def __init__(self,
                  file_index_path: str,
                  images_dir: str,
-                 annotations_dir: str,
+                 labels_dir: str,
                  image_size: int,
                  num_grid: int,
                  num_bboxes: int,
@@ -40,7 +40,7 @@ class ImageDataset(Dataset):
                 self.files_index.append(os.path.basename(file_name.strip("\n")))
 
         self.images_dir = images_dir
-        self.annotations_dir = annotations_dir
+        self.labels_dir = labels_dir
         self.image_size = image_size
         self.num_grid = num_grid
         self.num_bboxes = num_bboxes
@@ -50,14 +50,14 @@ class ImageDataset(Dataset):
     def __getitem__(self, batch_index: int) -> [torch.Tensor, torch.Tensor]:
         # Get image and annotation path
         image_path = os.path.join(self.images_dir, self.files_index[batch_index])
-        annotation_path = os.path.join(self.annotations_dir, self.files_index[batch_index].split(".")[0] + ".txt")
-        annotations = []
-        with open(annotation_path) as f:
+        label_path = os.path.join(self.labels_dir, self.files_index[batch_index].split(".")[0] + ".txt")
+        target = []
+        with open(label_path) as f:
             for line in f.readlines():
                 class_index, pos_x, pos_y, width, height = [float(x) if float(x) != int(float(x)) else int(x)
                                                             for x in line.replace("\n", "").split()]
 
-                annotations.append([class_index, pos_x, pos_y, width, height])
+                target.append([class_index, pos_x, pos_y, width, height])
 
         # Read a batch of image data
         image = cv2.imread(image_path)
@@ -86,8 +86,8 @@ class ImageDataset(Dataset):
         image = image_to_tensor(image, False, False)
 
         # Convert To Cells
-        annotations_matrix = torch.zeros((self.num_grid, self.num_grid, self.num_classes + 5 * self.num_bboxes))
-        for class_index, pos_x, pos_y, width, height in annotations:
+        target_matrix = torch.zeros((self.num_grid, self.num_grid, self.num_classes + 5 * self.num_bboxes))
+        for class_index, pos_x, pos_y, width, height in target:
             class_index = int(class_index)
 
             # i,j represents the cell row and cell column
@@ -96,19 +96,19 @@ class ImageDataset(Dataset):
             width_cell, height_cell = (width * self.num_grid, height * self.num_grid)
 
             # If no object already found for specific cell i,j
-            if annotations_matrix[i, j, 20] == 0:
+            if target_matrix[i, j, 20] == 0:
                 # Set that there exists an object
-                annotations_matrix[i, j, 20] = 1
+                target_matrix[i, j, 20] = 1
 
                 # Box coordinates
                 box_coordinates = torch.tensor([pos_x_cell, pos_y_cell, width_cell, height_cell])
 
-                annotations_matrix[i, j, 21:25] = box_coordinates
+                target_matrix[i, j, 21:25] = box_coordinates
 
                 # Set one hot encoding for class_label
-                annotations_matrix[i, j, class_index] = 1
+                target_matrix[i, j, class_index] = 1
 
-        return {"image_path": image_path, "image": image, "annotation": annotations_matrix}
+        return {"image_path": image_path, "image": image, "target": target_matrix}
 
     def __len__(self):
         return len(self.files_index)

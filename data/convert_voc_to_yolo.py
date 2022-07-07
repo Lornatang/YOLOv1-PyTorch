@@ -21,10 +21,10 @@ def main(args) -> None:
     # Create dataset output directory
     if not os.path.exists(args.output_mode_dir):
         os.makedirs(args.output_mode_dir)
-    if not os.path.exists(args.output_images_dir):
-        os.makedirs(args.output_images_dir)
-    if not os.path.exists(args.output_annotations_dir):
-        os.makedirs(args.output_annotations_dir)
+    if not os.path.exists(os.path.join(args.output_images_dir, args.mode)):
+        os.makedirs(os.path.join(args.output_images_dir, args.mode))
+    if not os.path.exists(os.path.join(args.output_labels_dir, args.mode)):
+        os.makedirs(os.path.join(args.output_labels_dir, args.mode))
 
     # Read the image object category in the VOC dataset
     classes = read_classes_from_txt(args.classes_txt_file_path)
@@ -37,16 +37,16 @@ def main(args) -> None:
         base_file_name = os.path.basename(file_name).split(".")[0]
         if base_file_name in images_index:
             # Write the label to the specified path
-            convert_annotation_to_txt(os.path.join(args.input_annotations_dir, base_file_name + ".xml"),
-                                      os.path.join(args.output_annotations_dir, base_file_name + ".txt"),
-                                      classes)
+            convert_labels_to_txt(os.path.join(args.input_labels_dir, base_file_name + ".xml"),
+                                  os.path.join(args.output_labels_dir, args.mode, base_file_name + ".txt"),
+                                  classes)
 
             # Copy the image file to the specified path
             shutil.copyfile(os.path.join(args.input_images_dir, file_name),
-                            os.path.join(args.output_images_dir, file_name))
+                            os.path.join(args.output_images_dir, args.mode, file_name))
 
             # Write the image file names in the same mode to the same txt file
-            write_file.write(f"{args.output_images_dir}/{file_name}\n")
+            write_file.write(f"{args.output_images_dir}/{args.mode}/{file_name}\n")
 
     write_file.close()
 
@@ -71,33 +71,33 @@ def read_classes_from_txt(txt_file_path: str) -> list:
     return classes
 
 
-def convert_annotation_to_txt(input_annotation_file_path: str,
-                              output_annotation_file_path: str,
-                              classes: list) -> None:
+def convert_labels_to_txt(input_labels_file_path: str,
+                          output_labels_file_path: str,
+                          classes: list) -> None:
     """
 
     Args:
-        input_annotation_file_path (str): The object location is marked with the file path, xml format
-        output_annotation_file_path (str): YOLO training data set annotation file path, txt format
+        input_labels_file_path (str): The object location is marked with the file path, xml format
+        output_labels_file_path (str): YOLO training data set annotation file path, txt format
         classes (list): Object detection datasets classes
 
     """
     # Read the label file and open the txt file with write permissions
-    annotation_file = open(input_annotation_file_path, "r")
-    txt_file = open(output_annotation_file_path, "w")
+    annotation_file = open(input_labels_file_path, "r")
+    txt_file = open(output_labels_file_path, "w")
 
     # Parse XML document into element tree.
-    annotation_tree = ElementTree.parse(annotation_file)
+    labels_tree = ElementTree.parse(annotation_file)
     # Return root element of this tree
-    annotations_root = annotation_tree.getroot()
+    labels_root = labels_tree.getroot()
 
     # Get the height and width of the entire image
-    image_size = annotations_root.find("size")
+    image_size = labels_root.find("size")
     image_width = int(image_size.find("width").text)
     image_height = int(image_size.find("height").text)
 
     # Iterate over each annotation object in the annotation file
-    for object_information in annotations_root.iter("object"):
+    for object_information in labels_root.iter("object"):
         # How easily the object can be found, 0 is easy, 1 is hard
         difficult = object_information.find("difficult").text
         # The class name of the current object
@@ -141,9 +141,9 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Convert VOC data format to YOLO data format.")
     parser.add_argument("--images_index_path", type=str, help="Dataset input images index path.")
     parser.add_argument("--input_images_dir", type=str, help="Dataset input images directory path.")
-    parser.add_argument("--input_annotations_dir", type=str, help="Dataset input annotations directory path.")
+    parser.add_argument("--input_labels_dir", type=str, help="Dataset input labels directory path.")
     parser.add_argument("--output_images_dir", type=str, help="Dataset output images directory.")
-    parser.add_argument("--output_annotations_dir", type=str, help="Dataset output annotations directory.")
+    parser.add_argument("--output_labels_dir", type=str, help="Dataset output labels directory.")
     parser.add_argument("--classes_txt_file_path", type=str, help="Txt file path containing dataset class name.")
     parser.add_argument("--output_mode_dir", type=str, help="Output directory path.")
     parser.add_argument("--mode", type=str, help="Dataset mode, which can be `train`, `valid` or `test`.")

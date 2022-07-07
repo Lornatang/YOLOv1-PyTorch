@@ -41,13 +41,16 @@ exp_name = "YOLOv1Tiny"
 
 if mode == "train":
     # Dataset setting
-    train_file_index_path = "./data/YOLO/train.txt"
-    test_file_index_path = "./data/YOLO/test.txt"
-    images_dir = "./data/YOLO/images"
-    annotations_dir = "./data/YOLO/annotations"
+    train_file_index_path = "./data/VOC0712/train.txt"
+    train_images_dir = "./data/VOC0712/images/train"
+    train_labels_dir = "./data/VOC0712/labels/train"
+
+    test_file_index_path = "./data/VOC0712/test.txt"
+    test_images_dir = "./data/VOC0712/images/test"
+    test_labels_dir = "./data/VOC0712/labels/test"
 
     image_size = 448
-    batch_size = 16
+    batch_size = 64
     num_workers = 4
 
     # The address to load the pretrained model
@@ -56,11 +59,11 @@ if mode == "train":
     # Incremental training and migration training
     resume = ""
 
-    # Total num epochs
-    epochs = 135
+    # Total num epochs (i.e 40,000 iters)
+    epochs = 155
 
     # Optimizer parameter
-    optim_lr = 1e-3
+    optim_lr = 5e-4
     optim_momentum = 0.9
     optim_weight_decay = 5e-4
 
